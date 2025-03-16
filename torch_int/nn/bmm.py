@@ -1,18 +1,39 @@
 import torch
-from .._CUDA import bmm_s8t_s8n_s8t, bmm_s8t_s8n_s32t, bmm_s8t_s8n_f32t
+# from .._CUDA import bmm_s8t_s8n_s8t, bmm_s8t_s8n_s32t, bmm_s8t_s8n_f32t
 
 
 class BMM_S8T_S8N_S8T(torch.nn.Module):
     def __init__(self, alpha):
         super().__init__()
-        self.register_buffer('a', torch.tensor(alpha))
+        self.register_buffer('alpha', torch.tensor(alpha))
 
     @torch.no_grad()
-    def forward(self, a, b):
-        # a: [B, M, K] int8
-        # b: [B, N, K] int8
-        # return: [B, M, N] int8
-        return bmm_s8t_s8n_s8t(a, b, self.a.item())
+    def forward(self, A: torch.Tensor, B: torch.Tensor, cuda_mode=False) -> torch.Tensor:
+        """
+        Batch matmul with 8-bit signed integers where...\n
+        - A is transposed
+        - B is not transposed
+        - C is transposed
+
+        :param A: [B, M, K] int8
+        :param B: [B, N, K] int8
+        :param cuda_mode: whether to use CUDA kernel
+        :return: [B, M, N] int8
+        """
+        if cuda_mode:
+            raise NotImplementedError("CUDA has been disabled for this module until further testing.")
+
+        [batch_size, m, k] = A.shape  # k = lda
+        [_, n, ldb] = B.shape
+        alpha = self.alpha.item()
+
+        if A.dtype != torch.int8 or B.dtype != torch.int8:
+            raise ValueError("Inputs must be int8 numpy arrays")
+        if k != ldb:
+           raise ValueError("A and B are not compatible.")
+
+        C = torch.matmul(A.to(torch.int32), B.to(torch.int32))  # accumulation
+        return (C * alpha).to(torch.int8)  # quantize
 
     @staticmethod
     def from_scale(a_scale, b_scale, output_scale):
