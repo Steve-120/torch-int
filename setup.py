@@ -6,8 +6,6 @@ from torch.utils import cpp_extension
 compute_capability = torch.cuda.get_device_capability()
 cuda_arch = compute_capability[0] * 100 + compute_capability[1] * 10
 
-# test
-
 setup(
     name='torch_int',
     ext_modules=[
