@@ -1,10 +1,10 @@
 import torch
-from .._CUDA import (linear_a8_w8_b32_o32,
-                     linear_relu_a8_w8_b8_o8,
-                     linear_a8_w8_b8_o8,
-                     linear_a8_w8_b32_o32_with_scaling,
-                     linear_a8_w8_bfp32_ofp32
-                     )
+# from .._CUDA import (linear_a8_w8_b32_o32,
+#                      linear_relu_a8_w8_b8_o8,
+#                      linear_a8_w8_b8_o8,
+#                      linear_a8_w8_b32_o32_with_scaling,
+#                      linear_a8_w8_bfp32_ofp32
+#                      )
 from ..functional.quantization import (
     quantize_per_tensor_absmax,
     quantize_weight_per_channel_absmax,
@@ -37,8 +37,12 @@ class W8A8B8O8Linear(torch.nn.Module):
     def forward(self, x):
         x_shape = x.shape
         x = x.view(-1, x_shape[-1])
-        y = linear_a8_w8_b8_o8(x, self.weight, self.bias,
-                               self.a.item(), self.b.item())
+
+        y = x.to(torch.int32) * self.weight.to(torch.int32) * self.a.item() + \
+            self.bias.to(torch.int32) * self.b.item()
+        y = y.to(torch.int8)
+        # y = linear_a8_w8_b8_o8(x, self.weight, self.bias,
+        #                        self.a.item(), self.b.item())
         y = y.view(*x_shape[:-1], -1)
         return y
 
@@ -81,8 +85,12 @@ class W8A8B8O8LinearReLU(torch.nn.Module):
     def forward(self, x):
         x_shape = x.shape
         x = x.view(-1, x_shape[-1])
-        y = linear_relu_a8_w8_b8_o8(x, self.weight, self.bias,
-                                    self.a.item(), self.b.item())
+        y = x.to(torch.int32) * self.weight.to(torch.int32) * self.a.item() + \
+            self.bias.to(torch.int32) * self.b.item()
+        y = torch.nn.functional.relu(y)
+        y = y.to(torch.int8)
+        # y = linear_relu_a8_w8_b8_o8(x, self.weight, self.bias,
+        #                             self.a.item(), self.b.item())
         y = y.view(*x_shape[:-1], -1)
         return y
 
@@ -124,7 +132,10 @@ class W8A8B32O32LinearWithoutScaling(torch.nn.Module):
     def forward(self, x):
         x_shape = x.shape
         x = x.view(-1, x_shape[-1])
-        y = linear_a8_w8_b32_o32(x, self.weight, self.bias)
+        y = x.to(torch.int32) * self.weight.to(torch.int32) + \
+            self.bias.to(torch.int32)
+        y = y.to(torch.int32)
+        # y = linear_a8_w8_b32_o32(x, self.weight, self.bias)
         y = y.view(*x_shape[:-1], -1)
         return y
 
@@ -153,8 +164,11 @@ class W8A8B32O32Linear(torch.nn.Module):
     def forward(self, x):
         x_shape = x.shape
         x = x.view(-1, x_shape[-1])
-        y = linear_a8_w8_b32_o32_with_scaling(
-            x, self.weight, self.bias, self.a.item(), self.b.item())
+        y = x.to(torch.int32) * self.weight.to(torch.int32) * self.a.item() + \
+            self.bias.to(torch.int32) * self.b.item()
+        y = y.to(torch.int32)
+        # y = linear_a8_w8_b32_o32_with_scaling(
+        #     x, self.weight, self.bias, self.a.item(), self.b.item())
         y = y.view(*x_shape[:-1], -1)
         return y
 
@@ -210,8 +224,11 @@ class W8A8BFP32OFP32Linear(torch.nn.Module):
         x_shape = x.shape
         x = x.view(-1, x_shape[-1])
         self.bias = self.bias.to(torch.float32)
-        y = linear_a8_w8_bfp32_ofp32(
-            x, self.weight, self.bias, self.a.item(), 1)
+        y = x.to(torch.int32) * self.weight.to(torch.int32) * self.a.item()
+        y = y.to(torch.float32)
+        y = y + self.bias
+        # y = linear_a8_w8_bfp32_ofp32(
+        #     x, self.weight, self.bias, self.a.item(), 1)
         y = y.view(*x_shape[:-1], -1)
         return y
 
