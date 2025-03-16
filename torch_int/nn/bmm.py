@@ -8,10 +8,18 @@ class BMM_S8T_S8N_S8T(torch.nn.Module):
         self.register_buffer('a', torch.tensor(alpha))
 
     @torch.no_grad()
-    def forward(self, a, b):
+    def forward(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+        """
+        Batch matmul with 8-bit signed integers where...
+            A is transposed
+            B is not transposed
+            C is transposed
+        """
         # a: [B, M, K] int8
         # b: [B, N, K] int8
         # return: [B, M, N] int8
+
+
         return bmm_s8t_s8n_s8t(a, b, self.a.item())
 
     @staticmethod
