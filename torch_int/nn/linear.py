@@ -37,8 +37,7 @@ class W8A8B8O8Linear(torch.nn.Module):
     def forward(self, x):
         x_shape = x.shape
         x = x.view(-1, x_shape[-1])
-
-        y = x.to(torch.int32) * self.weight.to(torch.int32) * self.a.item() + \
+        y = torch.matmul(x.to(torch.int32), self.weight.to(torch.int32)) * self.a.item() + \
             self.bias.to(torch.int32) * self.b.item()
         y = y.to(torch.int8)
         # y = linear_a8_w8_b8_o8(x, self.weight, self.bias,
@@ -85,7 +84,7 @@ class W8A8B8O8LinearReLU(torch.nn.Module):
     def forward(self, x):
         x_shape = x.shape
         x = x.view(-1, x_shape[-1])
-        y = x.to(torch.int32) * self.weight.to(torch.int32) * self.a.item() + \
+        y = torch.matmul(x.to(torch.int32), self.weight.to(torch.int32)) * self.a.item() + \
             self.bias.to(torch.int32) * self.b.item()
         y = torch.nn.functional.relu(y)
         y = y.to(torch.int8)
@@ -132,7 +131,7 @@ class W8A8B32O32LinearWithoutScaling(torch.nn.Module):
     def forward(self, x):
         x_shape = x.shape
         x = x.view(-1, x_shape[-1])
-        y = x.to(torch.int32) * self.weight.to(torch.int32) + \
+        y = torch.matmul(x.to(torch.int32), self.weight.to(torch.int32)) + \
             self.bias.to(torch.int32)
         y = y.to(torch.int32)
         # y = linear_a8_w8_b32_o32(x, self.weight, self.bias)
@@ -164,7 +163,7 @@ class W8A8B32O32Linear(torch.nn.Module):
     def forward(self, x):
         x_shape = x.shape
         x = x.view(-1, x_shape[-1])
-        y = x.to(torch.int32) * self.weight.to(torch.int32) * self.a.item() + \
+        y = torch.matmul(x.to(torch.int32), self.weight.to(torch.int32)) * self.a.item() + \
             self.bias.to(torch.int32) * self.b.item()
         y = y.to(torch.int32)
         # y = linear_a8_w8_b32_o32_with_scaling(
@@ -224,7 +223,7 @@ class W8A8BFP32OFP32Linear(torch.nn.Module):
         x_shape = x.shape
         x = x.view(-1, x_shape[-1])
         self.bias = self.bias.to(torch.float32)
-        y = x.to(torch.int32) * self.weight.to(torch.int32) * self.a.item()
+        y = torch.matmul(x.to(torch.int32), self.weight.to(torch.int32)) * self.a.item()
         y = y.to(torch.float32)
         y = y + self.bias
         # y = linear_a8_w8_bfp32_ofp32(
