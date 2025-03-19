@@ -37,7 +37,7 @@ class BMM_S8T_S8N_S8T(torch.nn.Module):
         alpha = self.alpha.item()
 
         C = torch.matmul(A.to(torch.int32), B.to(torch.int32))  # accumulation
-        return (C * alpha).to(torch.int8)  # quantize
+        return torch.clamp(C * alpha, min=-128, max=127).to(torch.int8)  # quantize
 
     @staticmethod
     def from_scale(a_scale, b_scale, output_scale):
