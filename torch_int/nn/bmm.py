@@ -36,7 +36,7 @@ class BMM_S8T_S8N_S8T(torch.nn.Module):
         check_matrices(A, B, cuda_mode)
         alpha = self.alpha.item()
 
-        C = torch.matmul(A.to(torch.int32), B.to(torch.int32))  # accumulation
+        C = torch.matmul(A.to(torch.int32), torch.permute(B.to(torch.int32), (0, 2, 1)))  # accumulation
         return torch.clamp(C * alpha, min=-128, max=127).to(torch.int8)  # quantize
 
     @staticmethod
@@ -70,7 +70,7 @@ class BMM_S8T_S8N_F32T(torch.nn.Module):
         check_matrices(A, B, cuda_mode)
         alpha = self.alpha.item()
 
-        C = torch.matmul(A.to(torch.int32), B.to(torch.int32))  # accumulation
+        C = torch.matmul(A.to(torch.int32), torch.permute(B.to(torch.int32), (0, 2, 1)))  # accumulation
         return (C * alpha).to(torch.float32)
 
 
@@ -104,5 +104,5 @@ class BMM_S8T_S8N_S32T(torch.nn.Module):
         check_matrices(A, B, cuda_mode)
         alpha = self.alpha.item()
 
-        C = torch.matmul(A.to(torch.int32), B.to(torch.int32))  # accumulation
+        C = torch.matmul(A.to(torch.int32), torch.permute(B.to(torch.int32), (0, 2, 1)))  # accumulation
         return C * alpha
