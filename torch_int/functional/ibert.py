@@ -13,6 +13,13 @@ class IBertQuant:
 
     @classmethod
     def quant(cls, x: torch.Tensor, dtype: torch.dtype):
+        """
+        Quantize a tensor to a given integer dtype.
+
+        :param x: original, unquantized tensor
+        :param dtype: output dtype
+        :return: quantized dtype tensor
+        """
         # assume alpha (clipping factor) to be the bounds of dtype
         dtype_info = torch.iinfo(dtype)
         alpha = torch.tensor(dtype_info.max, dtype=dtype)
@@ -37,6 +44,7 @@ class IBertQuant:
 class IBertComputation:
     """
     Using :py:class:`IBertQuant` to perform non-linear operations.
+    This assumes that all weights and bias were already converted to the quantized dtype.
     """
     def __init__(self):
         pass
@@ -44,8 +52,14 @@ class IBertComputation:
     @staticmethod
     def layernorm(x: torch.Tensor, weight, bias, dtype: torch.dtype) -> IBertQuant:
         """
-        IBERT-style LayerNorm using PyTorch (not CUTLASS).
+        IBERT-style LayerNorm using PyTorch (not CUTLASS). Works for all int dtypes.
         https://github.com/kssteven418/I-BERT/blob/1b09c759d6aeb71312df9c6ef74fa268a87c934e/fairseq/quantization/utils/quant_modules.py#L454
+
+        :param x: original, unquantized tensor
+        :param weight: weights for this layer
+        :param bias: bias for this layer
+        :param dtype: output dtype
+        :return: quantized dtype tensor with layernorm applied
         """
         quant = IBertQuant.quant(x, dtype)
         q, S = quant.q, quant.S
@@ -65,7 +79,7 @@ class IBertComputation:
         if var_int != 0:
             std_int = torch.bitwise_left_shift(1, torch.floor(bits/2))  # torch.Tensor(2 ** torch.floor(bits/2))
 
-            # "it converges within at most **four** iterations for any INT32" - I-BERT
+            # "it converges within at most **four** iterations for any **INT32**" - I-BERT
             # NOTE: this would be while True loop, but for safety, it is capped at 100 iterations
             # TODO: if the 4 iterations for int8 is true, could we just express this entire thing as
             #       a finite multiplication? it wouldn't hurt to go over 4 iterations
@@ -93,17 +107,77 @@ class IBertComputation:
 
         return IBertQuant(new_q_int, new_scaling_factor, dtype)
 
-
     @staticmethod
     def softmax(quant: IBertQuant) -> IBertQuant:
         """
-        IBERT-style SoftMax using PyTorch (not CUTLASS).
+        IBERT-style SoftMax using PyTorch (not CUTLASS). Works for all int dtypes.
+
+        :param quant: input quantized tensor
+        :return: quantized tensor with softmax applied
         """
-        raise NotImplementedError()
+        q, S, dtype = quant.q, quant.S, quant.dtype
+        q_tilde = q - torch.max(q, dim=2, keepdim=True).values
+        res_exp = IBertComputation._exp(IBertQuant(q_tilde, S, dtype))
+
+        return IBertQuant(
+            res_exp.q / torch.sum(res_exp.q, dim=2, keepdim=True),
+            res_exp.S,
+            dtype
+        )
 
     @staticmethod
-    def relu(quant: IBertQuant) -> IBertQuant:
+    def gelu(quant: IBertQuant) -> IBertQuant:
         """
-        IBERT-style ReLU using PyTorch (not CUTLASS).
+        IBERT-style GeLU using PyTorch (not CUTLASS). Works for all int dtypes.
+
+        :param quant: input quantized tensor
+        :return: quantized tensor with GeLU applied
         """
-        raise NotImplementedError()
+        q, S, dtype = quant.q, quant.S, quant.dtype
+        quant_erf = IBertComputation._erf(IBertQuant(q, torch.div(S, torch.sqrt(2)), dtype))
+        q_1 = torch.div(1, quant_erf.S, rounding_mode="floor").to(dtype)
+        return IBertQuant(
+            q * (quant_erf.q + q_1),
+            torch.bitwise_right_shift(S*quant_erf.S, 1),  # / 2
+            dtype
+        )
+
+    @staticmethod
+    def _poly(quant: IBertQuant, a: torch.Tensor, b: torch.Tensor, c: torch.Tensor) -> IBertQuant:
+        q, S, dtype = quant.q, quant.S, quant.dtype
+        q_b = torch.div(b, S, rounding_mode="floor").to(dtype)
+        q_c = torch.div(c, a*torch.square(S), rounding_mode="floor").to(dtype)
+        return IBertQuant(
+            torch.square(q+q_b) + q_c,
+            torch.floor(a*torch.square(S)),
+            dtype
+        )
+
+    @staticmethod
+    def _exp(quant: IBertQuant) -> IBertQuant:
+        q, S, dtype = quant.q, quant.S, quant.dtype
+        a, b, c = torch.Tensor(0.3585), torch.Tensor(1.353), torch.Tensor(0.344)
+        q_ln2 = torch.div(torch.log(torch.Tensor(2)), S, rounding_mode="floor").to(dtype)
+        z = torch.div(-q, q_ln2, rounding_mode="floor").to(dtype)
+        q_p = q + z*q_ln2
+
+        new_quant = IBertComputation._poly(IBertQuant(q_p, S, dtype), a, b, c)
+        return IBertQuant(
+            torch.bitwise_right_shift(new_quant.q, z),
+            new_quant.S,
+            dtype
+        )
+
+    @staticmethod
+    def _erf(quant: IBertQuant) -> IBertQuant:
+        q, S, dtype = quant.q, quant.S, quant.dtype
+        a, b, c = torch.Tensor(-0.2888), torch.Tensor(-1.769), torch.Tensor(1)
+        q_sign = torch.sign(q)
+        q_clipped = torch.clamp(torch.linalg.vector_norm(q, dim=2, keepdim=True), max=torch.div(-b, S))
+
+        new_quant = IBertComputation._poly(IBertQuant(q_clipped, S, dtype), a, b, c)
+        return IBertQuant(
+            q_sign*new_quant.q,
+            new_quant.S,
+            dtype
+        )
