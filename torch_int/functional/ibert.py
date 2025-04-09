@@ -82,7 +82,7 @@ class IBertComputation:
             # "it converges within at most **four** iterations for any **INT32**" - I-BERT
             # NOTE: this would be while True loop, but for safety, it is capped at 100 iterations
             # TODO: if the 4 iterations for int8 is true, could we just express this entire thing as
-            #       a finite multiplication? it wouldn't hurt to go over 4 iterations
+            #       a finite equation? it wouldn't hurt to go over 4 iterations
             for _ in range(100):
                 new_std_int = torch.bitwise_right_shift(
                     torch.floor(std_int + torch.div(var_int, std_int, rounding_mode="floor"))
