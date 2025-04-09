@@ -1,8 +1,12 @@
 import torch
 from ..functional.fused import dq_add_layernorm_q_cpp
+from ..functional.ibert import IBertComputation
 
 
 class LayerNormQ(torch.nn.Module):
+    """
+    This is the original LayerNorm quantized layer from PyTorch.
+    """
     def __init__(self, dim, eps=1e-5):
         super().__init__()
         self.input_scale = 1.0
@@ -26,6 +30,7 @@ class LayerNormQ(torch.nn.Module):
         q_module.bias = module.bias / output_scale
         return q_module
 
+
 class DQ_Add_LayerNorm_Q(torch.nn.Module):
     def __init__(self, dim, eps=1e-5):
         super().__init__()
@@ -41,3 +46,21 @@ class DQ_Add_LayerNorm_Q(torch.nn.Module):
         return dq_add_layernorm_q_cpp(
             input_int32, self.input_scale, residual_input_fp,
             self.weight, self.bias, self.eps)
+
+
+class LayerNormQS8IBert(torch.nn.Module):
+    """
+    I-BERT style int8 LayerNorm calling Python.
+    NOTE: This is just a wrapper around its functional counterpart.
+    """
+    def __init__(self, dim):
+        super().__init__()
+
+    def forward(self, x):
+        """
+        See :func:`functional.IBertComputation.layernorm` for more details.
+        NOTE: For right now, uniform symmetric quantization is done within this forward pass,
+                not in earlier initialization of the NN.
+        """
+        return IBertComputation.layernorm(x, self.weight, self.bias, torch.int8).dequant()
+
