@@ -96,7 +96,7 @@ class IBertComputation:
 
         # now compute var(std)
         y_int = torch.div(numerator, std_int, rounding_mode="floor").to(dtype)
-        new_scaling_factor = S  # TODO: this is different on L488. what does L488 mean? why are we doing this?
+        # new_scaling_factor = S  # TODO: this is different on L488. what does L488 mean? why are we doing this?
 
         # --- output
         new_bias = bias.data.detach() / weight.data.detach()
@@ -111,12 +111,13 @@ class IBertComputation:
     def softmax(quant: IBertQuant) -> IBertQuant:
         """
         IBERT-style SoftMax using PyTorch (not CUTLASS). Works for all int dtypes.
+        https://github.com/kssteven418/I-BERT/blob/1b09c759d6aeb71312df9c6ef74fa268a87c934e/fairseq/quantization/utils/quant_modules.py#L578
 
         :param quant: input quantized tensor
         :return: quantized tensor with softmax applied
         """
         q, S, dtype = quant.q, quant.S, quant.dtype
-        q_tilde = q - torch.max(q, dim=2, keepdim=True).values
+        q_tilde = q - torch.max(q, dim=-1, keepdim=True).values
         res_exp = IBertComputation._exp(IBertQuant(q_tilde, S, dtype))
 
         return IBertQuant(
@@ -156,8 +157,13 @@ class IBertComputation:
     @staticmethod
     def _exp(quant: IBertQuant) -> IBertQuant:
         q, S, dtype = quant.q, quant.S, quant.dtype
-        a, b, c = torch.Tensor(0.3585), torch.Tensor(1.353), torch.Tensor(0.344)
-        q_ln2 = torch.div(torch.log(torch.Tensor(2)), S, rounding_mode="floor").to(dtype)
+        a, b, c = torch.Tensor([0.3585]), torch.Tensor([1.353]), torch.Tensor([0.344])
+        ln2_approx = torch.Tensor([0.6931])
+        large_n = torch.Tensor([30])
+
+        # make sure we don't get div by 0
+        l2_int = torch.div(ln2_approx, S, rounding_mode="floor").to(dtype)
+        new_q = torch.max(q, large_n * l2_int)
         z = torch.div(-q, q_ln2, rounding_mode="floor").to(dtype)
         q_p = q + z*q_ln2
 
